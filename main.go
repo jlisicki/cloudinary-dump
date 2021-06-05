@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -85,6 +87,10 @@ func (d *Downloader) init() error {
 	return nil
 }
 
+func (d *Downloader) getFullFileName(fileName string) string {
+	return path.Join(d.TargetFolder, fileName)
+}
+
 func (d *Downloader) downloadAsset(asset api.BriefAssetResult) error {
 	resp, err := http.Get(asset.SecureURL)
 	if err != nil {
@@ -95,7 +101,7 @@ func (d *Downloader) downloadAsset(asset api.BriefAssetResult) error {
 	if err := d.targetFileNameTemplate.Execute(&fileName, asset); err != nil {
 		return fmt.Errorf("failed to create file name: %w", err)
 	}
-	fullFileName := path.Join(d.TargetFolder, fileName.String())
+	fullFileName := d.getFullFileName(fileName.String())
 	_, err = os.Stat(fullFileName)
 	if !os.IsNotExist(err) {
 		return fmt.Errorf("checking file absence failed: %w", err)
@@ -121,7 +127,7 @@ func (d *Downloader) worker(pending chan api.BriefAssetResult, completed chan ap
 	}
 }
 
-// Dump all assets from cloudinary to local folder
+// Dump all assets from cloudinary to local folder.
 func (d *Downloader) Dump(ctx context.Context) error {
 	if err := d.init(); err != nil {
 		return err
@@ -167,6 +173,13 @@ func (d *Downloader) Dump(ctx context.Context) error {
 		go d.worker(pending, completedAssets)
 	}
 	<-finished
+	assetsJSON, err := json.Marshal(assets)
+	if err != nil {
+		return fmt.Errorf("unable to marshal assets: %w", err)
+	}
+	if err := ioutil.WriteFile(d.getFullFileName("assets.json"), assetsJSON, 440); err != nil {
+		return fmt.Errorf("unable write assets definition file: %w", err)
+	}
 	return nil
 }
 
